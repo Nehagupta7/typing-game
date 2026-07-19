@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Keystrike</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0d14;
+    --panel:#10141d;
+    --panel-2:#161c28;
+    --line:#232b3a;
+    --cyan:#4fe3d4;
+    --cyan-dim:#2a7a70;
+    --magenta:#ff5470;
+    --amber:#ffb84d;
+    --text:#e8edf5;
+    --text-dim:#7c8698;
+    --danger:#ff3b5c;
+  }
+  *{ box-sizing:border-box; }
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  }
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(79,227,212,0.08), transparent 60%),
+      radial-gradient(ellipse 800px 600px at 100% 110%, rgba(255,84,112,0.06), transparent 60%),
+      var(--ink);
+    color:var(--text);
+    font-family:'JetBrains Mono', monospace;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  .wrap{ max-width:980px; margin:0 auto; padding:28px 18px 50px; }
+
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:12px; flex-wrap:wrap; margin-bottom:20px;
+  }
+  .brand{ display:flex; align-items:baseline; gap:10px; font-family:'Space Grotesk', sans-serif; }
+  .brand .mark{ font-weight:700; font-size:1.7rem; letter-spacing:-0.01em; color:var(--cyan); }
+  .brand .mark .bar{ color:var(--amber); }
+  .brand .tag{ font-size:0.7rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); border-left:1px solid var(--line); padding-left:10px; }
+
+  /* ---- HUD ---- */
+  .hud{
+    display:grid;
+    grid-template-columns:repeat(5, 1fr);
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .hud-cell{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 12px;
+  }
+  .hud-cell .lbl{ font-size:0.62rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
+  .hud-cell .val{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:1.25rem; }
+  .hud-cell.combo .val{ color:var(--amber); }
+  .hud-cell.timer .val{ color:var(--cyan); }
+  .hud-cell.timer.low .val{ color:var(--danger); animation:blinkWarn 0.6s ease-in-out infinite; }
+  @keyframes blinkWarn{ 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .hearts{ font-size:1.1rem; letter-spacing:2px; }
+  .hearts .lost{ opacity:0.2; }
+  @media (max-width:720px){ .hud{ grid-template-columns:repeat(3,1fr); } }
+
+  /* ---- Play field ---- */
+  .field-shell{
+    position:relative;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--line);
+    border-radius:16px;
+    overflow:hidden;
+    box-shadow:0 30px 60px -30px rgba(0,0,0,0.7);
+  }
+  .field-shell.shake{ animation:fieldShake 320ms ease-in-out; }
+  @keyframes fieldShake{
+    0%,100%{ transform:translateX(0); }
+    20%{ transform:translateX(-8px); }
+    40%{ transform:translateX(7px); }
+    60%{ transform:translateX(-5px); }
+    80%{ transform:translateX(4px); }
+  }
+  #playArea{
+    position:relative;
+    height:min(58vh, 480px);
+    min-height:320px;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size:40px 40px;
+  }
+  .ground-line{
+    position:absolute;
+    left:0; right:0; bottom:34px;
+    height:2px;
+    background:linear-gradient(90deg, transparent, var(--danger), transparent);
+    box-shadow:0 0 12px 1px rgba(255,59,92,0.6);
+  }
+  .ground-label{
+    position:absolute;
+    left:0; right:0; bottom:8px;
+    text-align:center;
+    font-size:0.6rem;
+    letter-spacing:0.2em;
+    text-transform:uppercase;
+    color:var(--danger);
+    opacity:0.55;
+  }
+
+  /* ---- Player character ---- */
+  .player-wrap{
+    position:absolute;
+    left:50%; bottom:2px;
+    transform:translateX(-50%);
+    width:74px; height:104px;
+    z-index:6;
+    pointer-events:none;
+    transition:transform 200ms ease-out;
+  }
+  .player-svg{ width:100%; height:100%; overflow:visible; }
+  .p-aura{
+    fill:var(--cyan);
+    opacity:0.12;
+    filter:blur(7px);
+    transform-box:fill-box;
+    transform-origin:center;
+    transition:opacity .3s ease, fill .3s ease;
+  }
+  .player-wrap.tier1 .p-aura{ opacity:0.24; }
+  .player-wrap.tier2 .p-aura{ opacity:0.32; fill:var(--amber); }
+  .player-wrap.tier3 .p-aura{ opacity:0.42; fill:var(--magenta); animation:auraPulse 900ms ease-in-out infinite; }
+  @keyframes auraPulse{
+    0%,100%{ transform:scale(1); opacity:0.42; }
+    50%{ transform:scale(1.18); opacity:0.62; }
+  }
+
+  .p-body{ transform-box:fill-box; transform-origin:center; animation:idleBob 1.8s ease-in-out infinite; }
+  @keyframes idleBob{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-3px); }
+  }
+  .p-head, .p-torso{ fill:var(--panel-2); stroke:var(--cyan); stroke-width:2.5; }
+  .p-arm-l, .p-arm-r, .p-leg-l, .p-leg-r{ stroke:var(--cyan); fill:none; stroke-linecap:round; }
+  .p-sword{ stroke:var(--text); stroke-linecap:round; }
+  .p-sword-arm{ transform-box:fill-box; transform-origin:44px 44px; }
+
+  .player-wrap.attacking .p-sword-arm{ animation:swordSwing 280ms ease-out; }
+  @keyframes swordSwing{
+    0%{ transform:rotate(0deg); }
+    45%{ transform:rotate(-60deg); }
+    100%{ transform:rotate(0deg); }
+  }
+  .player-wrap.attacking .p-torso{ animation:lungeForward 280ms ease-out; }
+  @keyframes lungeForward{
+    0%,100%{ transform:translateX(0); }
+    45%{ transform:translateX(4px); }
+  }
+
+  .player-wrap.hit .p-body{ animation:hitFlinch 320ms ease; }
+  @keyframes hitFlinch{
+    0%{ transform:translateX(0); filter:none; }
+    20%{ transform:translateX(-7px); filter:drop-shadow(0 0 7px var(--danger)); }
+    40%{ transform:translateX(6px); }
+    60%{ transform:translateX(-4px); }
+    100%{ transform:translateX(0); filter:none; }
+  }
+
+  .player-wrap.defeat .p-body{
+    animation:none;
+    transform:rotate(88deg) translate(-6px, 14px);
+    opacity:0.55;
+    transition:transform .6s ease, opacity .6s ease;
+  }
+  .player-wrap.defeat .p-aura{ opacity:0.06; }
+
+  .player-wrap.victory .p-sword-arm{ transform:rotate(-100deg); transition:transform .4s ease; }
+  .player-wrap.victory .p-aura{ opacity:0.5; animation:auraPulse 700ms ease-in-out infinite; fill:var(--amber); }
+
+  @media (prefers-reduced-motion: reduce){
+    .p-body, .p-sword-arm, .p-aura, .player-wrap.hit .p-body, .player-wrap.attacking .p-sword-arm, .player-wrap.attacking .p-torso{
+      animation:none !important;
+    }
+    .player-wrap{ transition:none !important; }
+  }
+
+  .word-el .mon{ margin-right:6px; }
+
+  .word-el{
+    position:absolute;
+    top:0; left:0;
+    transform:translate(0,0);
+    white-space:nowrap;
+    font-size:clamp(15px, 2.6vw, 20px);
+    font-weight:600;
+    padding:5px 9px;
+    border-radius:7px;
+    background:rgba(16,20,29,0.55);
+    border:1px solid rgba(255,255,255,0.06);
+    pointer-events:none;
+  }
+  .word-el .ch{ color:var(--text-dim); transition:color .08s ease; }
+  .word-el .ch.done{ color:var(--cyan); }
+  .word-el.locked{
+    border-color:var(--cyan);
+    box-shadow:0 0 0 1px var(--cyan), 0 0 16px -2px rgba(79,227,212,0.7);
+    background:rgba(79,227,212,0.08);
+  }
+  .word-el.locked .ch.done{ color:var(--amber); }
+  .word-el.miss-flash{ animation:missFlash 180ms ease; }
+  @keyframes missFlash{
+    0%,100%{ box-shadow:0 0 0 1px var(--magenta), 0 0 14px -2px var(--magenta); }
+    50%{ box-shadow:0 0 0 2px var(--magenta), 0 0 20px 0px var(--magenta); }
+  }
+  .word-el.success{
+    animation:wordSuccess 260ms ease forwards;
+  }
+  @keyframes wordSuccess{
+    0%{ transform:translate(var(--wx), var(--wy)) scale(1); opacity:1; }
+    100%{ transform:translate(var(--wx), var(--wy)) scale(1.5); opacity:0; }
+  }
+  .word-el.escape{
+    animation:wordEscape 320ms ease forwards;
+  }
+  @keyframes wordEscape{
+    0%{ transform:translate(var(--wx), var(--wy)) rotate(0deg); opacity:1; }
+    100%{ transform:translate(var(--wx), var(--wy)) translateY(18px) rotate(12deg); opacity:0; }
+  }
+
+  .burst{
+    position:absolute;
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:0.85rem;
+    color:var(--amber);
+    pointer-events:none;
+    animation:burstFloat 620ms ease forwards;
+  }
+  @keyframes burstFloat{
+    0%{ transform:translateY(0); opacity:1; }
+    100%{ transform:translateY(-34px); opacity:0; }
+  }
+
+  /* ---- Now typing panel ---- */
+  .now-typing{
+    margin-top:14px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px 16px;
+    display:flex;
+    align-items:center;
+    gap:14px;
+    min-height:56px;
+  }
+  .now-typing .lbl{ font-size:0.62rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); white-space:nowrap; }
+  .now-typing .target{ font-size:1.3rem; font-weight:600; letter-spacing:0.02em; }
+  .now-typing .target .ch{ color:var(--text-dim); }
+  .now-typing .target .ch.done{ color:var(--cyan); }
+  .now-typing .placeholder{ color:var(--text-dim); font-size:0.85rem; }
+
+  .controls-row{
+    display:flex; justify-content:space-between; align-items:center;
+    margin-top:14px; flex-wrap:wrap; gap:10px;
+  }
+  .hint{ font-size:0.72rem; color:var(--text-dim); }
+  .btn{
+    font-family:'JetBrains Mono', monospace;
+    font-size:0.78rem; font-weight:600;
+    color:var(--text);
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    padding:9px 14px;
+    border-radius:8px;
+    cursor:pointer;
+    transition:border-color .15s ease, transform .1s ease;
+  }
+  .btn:hover{ border-color:var(--cyan); }
+  .btn:active{ transform:translateY(1px); }
+  .btn.primary{ background:var(--cyan); border-color:var(--cyan); color:#06231f; font-weight:700; }
+  .btn.primary:hover{ border-color:var(--amber); }
+  .btn:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+  /* ---- Overlays ---- */
+  .overlay{
+    position:absolute; inset:0;
+    background:rgba(8,10,15,0.88);
+    backdrop-filter:blur(4px);
+    display:flex; align-items:center; justify-content:center;
+    z-index:30;
+    padding:20px;
+  }
+  .overlay[hidden]{ display:none; }
+  .overlay-card{
+    max-width:460px; width:100%;
+    text-align:center;
+  }
+  .overlay-card h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-size:2rem;
+    margin:0 0 6px;
+    color:var(--cyan);
+  }
+  .overlay-card .sub{ color:var(--text-dim); font-size:0.85rem; margin-bottom:22px; }
+
+  .seg{
+    display:flex; justify-content:center;
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:4px; gap:2px; margin-bottom:12px;
+  }
+  .seg button{
+    font-family:'JetBrains Mono', monospace;
+    font-size:0.78rem; font-weight:600;
+    color:var(--text-dim);
+    background:transparent; border:none;
+    padding:9px 12px; border-radius:7px; cursor:pointer;
+    flex:1;
+    transition:background .15s ease, color .15s ease;
+  }
+  .seg button.active{ background:var(--cyan-dim); color:var(--cyan); }
+  .seg button:hover:not(.active){ color:var(--text); }
+  .seg-label{ font-size:0.6rem; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin:14px 0 6px; text-align:left; }
+
+  .stat-grid{
+    display:grid; grid-template-columns:repeat(2,1fr); gap:10px;
+    margin:20px 0;
+  }
+  .stat-box{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  .stat-box .lbl{ font-size:0.6rem; letter-spacing:0.12em; text-transform:uppercase; color:var(--text-dim); margin-bottom:4px; }
+  .stat-box .val{ font-family:'Space Grotesk', sans-serif; font-weight:700; font-size:1.4rem; color:var(--cyan); }
+
+  footer.note{ margin-top:26px; text-align:center; font-size:0.72rem; color:var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="mark">KEY<span class="bar">//</span>STRIKE</span>
+      <span class="tag">a typing arcade</span>
+    </div>
+  </header>
+
+  <div class="hud">
+    <div class="hud-cell">
+      <div class="lbl">Score</div>
+      <div class="val" id="hudScore">0</div>
+    </div>
+    <div class="hud-cell combo">
+      <div class="lbl">Combo</div>
+      <div class="val" id="hudCombo">0×</div>
+    </div>
+    <div class="hud-cell">
+      <div class="lbl">WPM</div>
+      <div class="val" id="hudWpm">0</div>
+    </div>
+    <div class="hud-cell">
+      <div class="lbl">Accuracy</div>
+      <div class="val" id="hudAcc">100%</div>
+    </div>
+    <div class="hud-cell" id="hudRightCell">
+      <div class="lbl" id="hudRightLbl">Lives</div>
+      <div class="val hearts" id="hudRightVal">♥ ♥ ♥ ♥</div>
+    </div>
+  </div>
+
+  <div class="field-shell" id="fieldShell">
+    <div id="playArea">
+      <div class="ground-line"></div>
+      <div class="ground-label">danger line</div>
+
+      <div class="player-wrap" id="playerWrap">
+        <svg class="player-svg" viewBox="0 0 80 100">
+          <ellipse class="p-aura" cx="36" cy="58" rx="30" ry="30"></ellipse>
+          <g class="p-body">
+            <circle class="p-head" cx="36" cy="26" r="10"></circle>
+            <rect class="p-torso" x="24" y="36" width="24" height="32" rx="7"></rect>
+            <line class="p-leg-l" x1="30" y1="68" x2="26" y2="92" stroke-width="6"></line>
+            <line class="p-leg-r" x1="42" y1="68" x2="46" y2="92" stroke-width="6"></line>
+            <line class="p-arm-l" x1="24" y1="44" x2="14" y2="58" stroke-width="6"></line>
+            <g class="p-sword-arm">
+              <line class="p-arm-r" x1="48" y1="44" x2="58" y2="52" stroke-width="6"></line>
+              <line class="p-sword" x1="58" y1="52" x2="76" y2="30" stroke-width="4"></line>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="overlay" id="startOverlay">
+      <div class="overlay-card">
+        <h1>KEY//STRIKE</h1>
+        <div class="sub">Type the falling words before they cross the danger line.</div>
+
+        <div class="seg-label">Mode</div>
+        <div class="seg" id="modeSeg">
+          <button data-mode="survival" class="active">Survival</button>
+          <button data-mode="timed">Timed · 60s</button>
+        </div>
+
+        <div class="seg-label">Difficulty</div>
+        <div class="seg" id="diffSeg">
+          <button data-diff="easy" class="active">Easy</button>
+          <button data-diff="medium">Medium</button>
+          <button data-diff="hard">Hard</button>
+          <button data-diff="warrior">Warrior</button>
+        </div>
+
+        <button class="btn primary" id="startBtn" style="margin-top:16px; width:100%; padding:12px;">Start ▶</button>
+        <div class="hint" style="margin-top:12px;">Just start typing a word's first letter to lock onto it — Backspace to correct, Esc to pause.</div>
+      </div>
+    </div>
+
+    <div class="overlay" id="pauseOverlay" hidden>
+      <div class="overlay-card">
+        <h1>Paused</h1>
+        <div class="sub">Take a breath, warrior.</div>
+        <button class="btn primary" id="resumeBtn" style="width:100%; padding:12px; margin-bottom:10px;">Resume</button>
+        <button class="btn" id="quitBtn" style="width:100%; padding:10px;">Quit to Menu</button>
+      </div>
+    </div>
+
+    <div class="overlay" id="overOverlay" hidden>
+      <div class="overlay-card">
+        <h1 id="overTitle">Run Over</h1>
+        <div class="sub" id="overSub">Here's how you did.</div>
+        <div class="stat-grid">
+          <div class="stat-box"><div class="lbl">Score</div><div class="val" id="overScore">0</div></div>
+          <div class="stat-box"><div class="lbl">WPM</div><div class="val" id="overWpm">0</div></div>
+          <div class="stat-box"><div class="lbl">Accuracy</div><div class="val" id="overAcc">0%</div></div>
+          <div class="stat-box"><div class="lbl">Best Combo</div><div class="val" id="overCombo">0×</div></div>
+        </div>
+        <button class="btn primary" id="playAgainBtn" style="width:100%; padding:12px; margin-bottom:10px;">Play Again</button>
+        <button class="btn" id="menuBtn" style="width:100%; padding:10px;">Change Mode</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="now-typing">
+    <span class="lbl">Now typing</span>
+    <span class="target" id="nowTypingTarget"><span class="placeholder">start typing to lock a target…</span></span>
+  </div>
+
+  <div class="controls-row">
+    <div class="hint">Physical keyboard required — this one's for desktop.</div>
+    <button class="btn" id="pauseBtn">Pause</button>
+  </div>
+
+  <footer class="note">Survive the words, or beat the clock — either way, don't let one hit the danger line.</footer>
+</div>
+
+<script>
+(function(){
+
+  var WORDS = {
+    everyday: ["time","year","people","way","day","thing","life","child","world","school","state","family","group","country","water","music","movie","coffee","garden","friend","travel","weather","kitchen","holiday","picture","weekend","evening","morning","dinner","market","story","paper","river","forest","bridge","window","pocket","ticket","yellow","purple","orange","hungry","simple","gentle","bottle","candle","pencil","wallet","sunset","breeze"],
+    work: ["meeting","reply","deadline","schedule","calendar","agenda","forward","attachment","follow-up","standup","sync","inbox","reminder","update","draft","review","approve","escalate","onboard","kickoff","checklist","status","priority","deliverable","overdue","reschedule","conference","memo","invoice","feedback","proposal","budget","timeline","milestone","workflow","report","summary","reply-all","action item","touch base"],
+    hard: ["extraordinary","determination","subconscious","phenomenon","architecture","independence","circumference","psychology","fluorescent","bureaucracy","questionnaire","entrepreneur","synchronize","reconnaissance","juxtaposition","metamorphosis","unprecedented","overwhelming","sophisticated","revolutionary","interpretation","accountability","infrastructure","implementation","controversial","approximately","collaboration","documentation","optimization","asynchronous"],
+    dev: ["git commit","npm install","sudo rm -rf","const x =","function()","if (true)","return null;","console.log","import react","export default","async await","== vs ===","{ }","[ ]","for (i=0)","while(1)","try { catch","#include","git push","new error()","null !== undefined","git status","npm run build","docker build","select * from","git rebase -i","curl -x post","chmod +x","git checkout -b","npm run test"]
+  };
+
+  var DIFFICULTY = {
+    easy:    { pool: WORDS.everyday, spawnMs: 1900, fallMs: 9200, rampEvery: 16000, spawnFloor: 950,  fallFloor: 4200 },
+    medium:  { pool: WORDS.everyday.concat(WORDS.work), spawnMs: 1550, fallMs: 7600, rampEvery: 15000, spawnFloor: 750, fallFloor: 3400 },
+    hard:    { pool: WORDS.work.concat(WORDS.hard), spawnMs: 1250, fallMs: 6400, rampEvery: 14000, spawnFloor: 620, fallFloor: 2800 },
+    warrior: { pool: WORDS.hard.concat(WORDS.dev).concat(WORDS.dev), spawnMs: 1050, fallMs: 5400, rampEvery: 13000, spawnFloor: 520, fallFloor: 2300 }
+  };
+
+  var playArea = document.getElementById('playArea');
+  var fieldShell = document.getElementById('fieldShell');
+  var playerWrap = document.getElementById('playerWrap');
+  var MONSTER_ICON = { easy: '\uD83D\uDC7E', medium: '\uD83D\uDC3A', hard: '\uD83D\uDC09', warrior: '\uD83E\uDD16' };
+  var startOverlay = document.getElementById('startOverlay');
+  var pauseOverlay = document.getElementById('pauseOverlay');
+  var overOverlay = document.getElementById('overOverlay');
+  var nowTypingTarget = document.getElementById('nowTypingTarget');
+
+  var hudScore = document.getElementById('hudScore');
+  var hudCombo = document.getElementById('hudCombo');
+  var hudWpm = document.getElementById('hudWpm');
+  var hudAcc = document.getElementById('hudAcc');
+  var hudRightCell = document.getElementById('hudRightCell');
+  var hudRightLbl = document.getElementById('hudRightLbl');
+  var hudRightVal = document.getElementById('hudRightVal');
+
+  var mode = 'survival';
+  var difficulty = 'easy';
+  var running = false;
+  var paused = false;
+
+  var state = null;
+  var rafId = null;
+  var wordSeq = 0;
+
+  function freshState(){
+    var cfg = DIFFICULTY[difficulty];
+    return {
+      lives: 4,
+      score: 0,
+      combo: 0,
+      maxCombo: 0,
+      correctChars: 0,
+      mistakes: 0,
+      startTime: performance.now(),
+      pausedAccum: 0,
+      pauseStartedAt: 0,
+      activeWords: [],
+      lockedId: null,
+      nextSpawnAt: performance.now() + 400,
+      spawnMs: cfg.spawnMs,
+      fallMs: cfg.fallMs,
+      timeLeftMs: 60000,
+      lastFrame: performance.now()
+    };
+  }
+
+  function pool(){ return DIFFICULTY[difficulty].pool; }
+
+  function pickWordText(){
+    var p = pool();
+    return p[Math.floor(Math.random() * p.length)];
+  }
+
+  /* ---------------- Setup UI: mode / difficulty selectors ---------------- */
+
+  document.getElementById('modeSeg').addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    mode = btn.dataset.mode;
+    Array.from(this.children).forEach(function(b){ b.classList.toggle('active', b === btn); });
+  });
+  document.getElementById('diffSeg').addEventListener('click', function(e){
+    var btn = e.target.closest('button');
+    if (!btn) return;
+    difficulty = btn.dataset.diff;
+    Array.from(this.children).forEach(function(b){ b.classList.toggle('active', b === btn); });
+  });
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('resumeBtn').addEventListener('click', resumeGame);
+  document.getElementById('quitBtn').addEventListener('click', function(){ hardStop(); showStart(); });
+  document.getElementById('playAgainBtn').addEventListener('click', startGame);
+  document.getElementById('menuBtn').addEventListener('click', function(){ hardStop(); showStart(); });
+  document.getElementById('pauseBtn').addEventListener('click', function(){
+    if (!running) return;
+    if (paused) resumeGame(); else pauseGame();
+  });
+
+  function showStart(){
+    startOverlay.hidden = false;
+    pauseOverlay.hidden = true;
+    overOverlay.hidden = true;
+    hudRightLbl.textContent = mode === 'survival' ? 'Lives' : 'Time';
+    hudRightVal.innerHTML = mode === 'survival' ? '♥ ♥ ♥ ♥' : '1:00';
+    hudRightCell.classList.remove('low');
+    hudScore.textContent = '0';
+    hudCombo.textContent = '0×';
+    hudWpm.textContent = '0';
+    hudAcc.textContent = '100%';
+  }
+
+  /* ---------------- Game lifecycle ---------------- */
+
+  function startGame(){
+    clearWords();
+    state = freshState();
+    running = true;
+    paused = false;
+    startOverlay.hidden = true;
+    pauseOverlay.hidden = true;
+    overOverlay.hidden = true;
+    hudRightLbl.textContent = mode === 'survival' ? 'Lives' : 'Time';
+    playerWrap.className = 'player-wrap';
+    playerWrap.style.transform = 'translateX(-50%)';
+    if (playerReturnTimer){ clearTimeout(playerReturnTimer); playerReturnTimer = null; }
+    renderHUD();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function pauseGame(){
+    if (!running || paused) return;
+    paused = true;
+    state.pauseStartedAt = performance.now();
+    pauseOverlay.hidden = false;
+  }
+
+  function resumeGame(){
+    if (!running || !paused) return;
+    state.pausedAccum += performance.now() - state.pauseStartedAt;
+    paused = false;
+    pauseOverlay.hidden = true;
+    state.lastFrame = performance.now();
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function hardStop(){
+    running = false;
+    paused = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    clearWords();
+  }
+
+  function endGame(reason){
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    var elapsedMin = Math.max((performance.now() - state.startTime - state.pausedAccum) / 60000, 0.01);
+    var wpm = Math.round((state.correctChars / 5) / elapsedMin);
+    var totalKeys = state.correctChars + state.mistakes;
+    var acc = totalKeys > 0 ? Math.round((state.correctChars / totalKeys) * 100) : 100;
+
+    document.getElementById('overTitle').textContent = reason === 'lives' ? 'Overrun!' : 'Time\u2019s Up';
+    document.getElementById('overSub').textContent = reason === 'lives'
+      ? 'The words got past you. Nice fight while it lasted.'
+      : 'Sixty seconds down. Here\u2019s the damage report.';
+    document.getElementById('overScore').textContent = state.score;
+    document.getElementById('overWpm').textContent = wpm;
+    document.getElementById('overAcc').textContent = acc + '%';
+    document.getElementById('overCombo').textContent = state.maxCombo + '\u00d7';
+
+    overOverlay.hidden = false;
+    clearWords();
+    playerWrap.classList.remove('attacking','hit');
+    playerWrap.classList.add(reason === 'lives' ? 'defeat' : 'victory');
+  }
+
+  function clearWords(){
+    if (playArea){
+      var els = playArea.querySelectorAll('.word-el, .burst');
+      els.forEach(function(e){ e.remove(); });
+    }
+    if (state) state.activeWords = [];
+  }
+
+  /* ---------------- Main loop ---------------- */
+
+  function loop(now){
+    if (!running || paused) return;
+    var cfg = DIFFICULTY[difficulty];
+    var elapsedSurvival = now - state.startTime - state.pausedAccum;
+
+    // difficulty ramp
+    var ramps = Math.floor(elapsedSurvival / cfg.rampEvery);
+    state.spawnMs = Math.max(cfg.spawnMs * Math.pow(0.91, ramps), cfg.spawnFloor);
+    state.fallMs = Math.max(cfg.fallMs * Math.pow(0.94, ramps), cfg.fallFloor);
+
+    // timed mode countdown
+    if (mode === 'timed'){
+      state.timeLeftMs = Math.max(60000 - elapsedSurvival, 0);
+      if (state.timeLeftMs <= 0){
+        endGame('time');
+        return;
+      }
+    }
+
+    // spawn
+    if (now >= state.nextSpawnAt){
+      spawnWord(now);
+      var jitter = 0.75 + Math.random() * 0.5;
+      state.nextSpawnAt = now + state.spawnMs * jitter;
+    }
+
+    // update positions
+    var areaRect = playArea.getBoundingClientRect();
+    var groundY = areaRect.height - 44;
+    var escaped = [];
+    state.activeWords.forEach(function(w){
+      var progress = (now - w.spawnTime) / w.fallMs;
+      if (progress >= 1){
+        escaped.push(w);
+        return;
+      }
+      var y = progress * groundY;
+      w.el.style.transform = 'translate(' + w.xPx + 'px,' + y + 'px)';
+      w.el.style.setProperty('--wx', w.xPx + 'px');
+      w.el.style.setProperty('--wy', y + 'px');
+      w.lastY = y;
+    });
+
+    escaped.forEach(function(w){ wordEscaped(w); });
+
+    renderHUD(now);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function spawnWord(now){
+    var text = pickWordText();
+    var areaRect = playArea.getBoundingClientRect();
+    var maxWidthGuess = Math.max(60, text.length * 13);
+    var xPx = 10 + Math.random() * Math.max(10, (areaRect.width - maxWidthGuess - 20));
+
+    var el = document.createElement('div');
+    el.className = 'word-el';
+    var monSpan = document.createElement('span');
+    monSpan.className = 'mon';
+    monSpan.textContent = MONSTER_ICON[difficulty] || MONSTER_ICON.easy;
+    el.appendChild(monSpan);
+    text.split('').forEach(function(ch){
+      var span = document.createElement('span');
+      span.className = 'ch';
+      span.textContent = ch;
+      el.appendChild(span);
+    });
+    el.style.setProperty('--wx', xPx + 'px');
+    el.style.setProperty('--wy', '0px');
+    el.style.transform = 'translate(' + xPx + 'px,0px)';
+    playArea.appendChild(el);
+
+    var w = {
+      id: ++wordSeq,
+      text: text,
+      typedLen: 0,
+      spawnTime: now,
+      fallMs: state.fallMs,
+      xPx: xPx,
+      lastY: 0,
+      el: el
+    };
+    state.activeWords.push(w);
+  }
+
+  function getWordById(id){
+    for (var i=0;i<state.activeWords.length;i++){
+      if (state.activeWords[i].id === id) return state.activeWords[i];
+    }
+    return null;
+  }
+
+  function updateWordDisplay(w){
+    var spans = w.el.querySelectorAll('.ch');
+    spans.forEach(function(span, i){
+      span.classList.toggle('done', i < w.typedLen);
+    });
+    w.el.classList.toggle('locked', state.lockedId === w.id);
+    renderNowTyping(w);
+  }
+
+  function renderNowTyping(w){
+    if (!w){
+      nowTypingTarget.innerHTML = '<span class="placeholder">start typing to lock a target\u2026</span>';
+      return;
+    }
+    var html = '';
+    w.text.split('').forEach(function(ch, i){
+      html += '<span class="ch' + (i < w.typedLen ? ' done' : '') + '">' + escapeHtml(ch) + '</span>';
+    });
+    nowTypingTarget.innerHTML = html;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function removeWordEl(w, kind){
+    w.el.classList.add(kind);
+    setTimeout(function(){ if (w.el && w.el.parentNode) w.el.remove(); }, 340);
+  }
+
+  function spawnBurst(w, points){
+    var burst = document.createElement('div');
+    burst.className = 'burst';
+    burst.textContent = '+' + points;
+    burst.style.left = w.xPx + 'px';
+    burst.style.top = w.lastY + 'px';
+    playArea.appendChild(burst);
+    setTimeout(function(){ if (burst.parentNode) burst.remove(); }, 650);
+  }
+
+  function completeWord(w){
+    if (state.lockedId === w.id) state.lockedId = null;
+    state.combo++;
+    state.maxCombo = Math.max(state.maxCombo, state.combo);
+    var multiplier = Math.min(1 + Math.floor(state.combo / 5) * 0.5, 4);
+    var points = Math.round(w.text.replace(/\s/g,'').length * 10 * multiplier);
+    state.score += points;
+    spawnBurst(w, points);
+    playerAttack(w);
+    removeWordEl(w, 'success');
+    state.activeWords = state.activeWords.filter(function(x){ return x.id !== w.id; });
+    renderNowTyping(null);
+    renderHUD();
+    updateComboTier();
+  }
+
+  function wordEscaped(w){
+    if (state.lockedId === w.id) state.lockedId = null;
+    state.combo = 0;
+    playerHit(w);
+    removeWordEl(w, 'escape');
+    state.activeWords = state.activeWords.filter(function(x){ return x.id !== w.id; });
+    renderNowTyping(null);
+    shakeField();
+    updateComboTier();
+    if (mode === 'survival'){
+      state.lives--;
+      if (state.lives <= 0){
+        renderHUD();
+        endGame('lives');
+        return;
+      }
+    }
+    renderHUD();
+  }
+
+  var playerReturnTimer = null;
+
+  function targetDx(w){
+    if (!w || !w.el) return 0;
+    var areaRect = playArea.getBoundingClientRect();
+    var wordRect = w.el.getBoundingClientRect();
+    var wordCenterX = (wordRect.left - areaRect.left) + wordRect.width / 2;
+    var areaCenterX = areaRect.width / 2;
+    var maxRange = Math.max(areaRect.width / 2 - 46, 20);
+    var dx = wordCenterX - areaCenterX;
+    return Math.max(-maxRange, Math.min(maxRange, dx));
+  }
+
+  function movePlayerTo(dx){
+    playerWrap.style.transform = 'translateX(calc(-50% + ' + dx + 'px))';
+  }
+
+  function playerAttack(w){
+    if (playerReturnTimer){ clearTimeout(playerReturnTimer); playerReturnTimer = null; }
+    movePlayerTo(targetDx(w));
+    playerWrap.classList.remove('attacking');
+    void playerWrap.offsetWidth;
+    playerWrap.classList.add('attacking');
+    setTimeout(function(){ playerWrap.classList.remove('attacking'); }, 300);
+    playerReturnTimer = setTimeout(function(){
+      movePlayerTo(0);
+      playerReturnTimer = null;
+    }, 420);
+  }
+
+  function playerHit(w){
+    if (playerReturnTimer){ clearTimeout(playerReturnTimer); playerReturnTimer = null; }
+    movePlayerTo(targetDx(w));
+    playerWrap.classList.remove('hit');
+    void playerWrap.offsetWidth;
+    playerWrap.classList.add('hit');
+    setTimeout(function(){ playerWrap.classList.remove('hit'); }, 340);
+    playerReturnTimer = setTimeout(function(){
+      movePlayerTo(0);
+      playerReturnTimer = null;
+    }, 420);
+  }
+
+  function updateComboTier(){
+    playerWrap.classList.remove('tier1','tier2','tier3');
+    if (state.combo >= 20) playerWrap.classList.add('tier3');
+    else if (state.combo >= 10) playerWrap.classList.add('tier2');
+    else if (state.combo >= 5) playerWrap.classList.add('tier1');
+  }
+
+  function shakeField(){
+    fieldShell.classList.remove('shake');
+    void fieldShell.offsetWidth;
+    fieldShell.classList.add('shake');
+  }
+
+  function flashMiss(w){
+    if (!w) { shakeField(); return; }
+    w.el.classList.remove('miss-flash');
+    void w.el.offsetWidth;
+    w.el.classList.add('miss-flash');
+  }
+
+  /* ---------------- HUD ---------------- */
+
+  function renderHUD(now){
+    hudScore.textContent = state.score;
+    hudCombo.textContent = state.combo + '\u00d7';
+
+    var elapsedMin = Math.max(((now || performance.now()) - state.startTime - state.pausedAccum) / 60000, 0.0005);
+    var wpm = Math.round((state.correctChars / 5) / elapsedMin);
+    hudWpm.textContent = Math.max(wpm, 0);
+
+    var totalKeys = state.correctChars + state.mistakes;
+    var acc = totalKeys > 0 ? Math.round((state.correctChars / totalKeys) * 100) : 100;
+    hudAcc.textContent = acc + '%';
+
+    if (mode === 'survival'){
+      var hearts = '';
+      for (var i=0;i<4;i++){
+        hearts += '<span' + (i < state.lives ? '' : ' class="lost"') + '>\u2665</span> ';
+      }
+      hudRightVal.innerHTML = hearts;
+      hudRightCell.classList.remove('low');
+    } else {
+      var secs = Math.ceil(state.timeLeftMs / 1000);
+      var m = Math.floor(secs / 60), s = secs % 60;
+      hudRightVal.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+      hudRightCell.classList.toggle('low', secs <= 10);
+    }
+  }
+
+  /* ---------------- Input ---------------- */
+
+  function handleChar(ch){
+    if (state.lockedId){
+      var w = getWordById(state.lockedId);
+      if (!w){ state.lockedId = null; return; }
+      var expected = w.text[w.typedLen];
+      if (ch === expected){
+        w.typedLen++;
+        state.correctChars++;
+        updateWordDisplay(w);
+        if (w.typedLen === w.text.length){
+          completeWord(w);
+        }
+      } else {
+        state.mistakes++;
+        flashMiss(w);
+      }
+      return;
+    }
+
+    var candidates = state.activeWords.filter(function(w){ return w.text[0] === ch; });
+    if (candidates.length){
+      candidates.sort(function(a,b){ return b.lastY - a.lastY; }); // most urgent (closest to ground) first
+      var target = candidates[0];
+      target.typedLen = 1;
+      state.correctChars++;
+      state.lockedId = target.id;
+      updateWordDisplay(target);
+      if (target.typedLen === target.text.length){
+        completeWord(target);
+      }
+    } else {
+      state.mistakes++;
+      flashMiss(null);
+    }
+  }
+
+  document.addEventListener('keydown', function(e){
+    if (!running){
+      return;
+    }
+    if (e.key === 'Escape'){
+      e.preventDefault();
+      if (paused) resumeGame(); else pauseGame();
+      return;
+    }
+    if (paused) return;
+
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+    if (e.key === 'Backspace'){
+      e.preventDefault();
+      if (state.lockedId){
+        var w = getWordById(state.lockedId);
+        if (w && w.typedLen > 0){
+          w.typedLen--;
+          updateWordDisplay(w);
+          if (w.typedLen === 0){ state.lockedId = null; renderNowTyping(null); }
+        }
+      }
+      return;
+    }
+
+    if (e.key.length === 1){
+      if (e.key === ' ') e.preventDefault();
+      handleChar(e.key.toLowerCase());
+    }
+  });
+
+  showStart();
+})();
+</script>
+</body>
+</html>
